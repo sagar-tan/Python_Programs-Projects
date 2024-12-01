@@ -1,54 +1,48 @@
-#Implementing Fuzzy Logic-Based Traffic Light Control System.
+#knapsack problem
 
+import random
 import numpy as np
-import skfuzzy as fuzz
-from skfuzzy import control as ctrl
+items = [
+    {"weight": 10, "value": 60},
+    {"weight": 20, "value": 100},
+    {"weight": 30, "value": 120}
+]
+max_weight = 50
+population_size = 6
+generations = 50
+mutation_rate = 0.1
+def fitness(individual):
+    total_weight = sum(ind["weight"] * gene for ind, gene in zip(items, individual))
+    total_value = sum(ind["value"] * gene for ind, gene in zip(items, individual))
+    return total_value if total_weight <= max_weight else 0
+def generate_individual():
+    return [random.randint(0, 1) for _ in range(len(items))]
+def generate_population(size):
+    return [generate_individual() for _ in range(size)]
+def selection(population):
+    fitnesses = [fitness(ind) for ind in population]
+    probabilities = [f / sum(fitnesses) for f in fitnesses]
+    return population[np.random.choice(len(population), p=probabilities)]
+def crossover(parent1, parent2):
+    point = random.randint(1, len(items) - 1)
+    child1 = parent1[:point] + parent2[point:]
+    child2 = parent2[:point] + parent1[point:]
+    return child1, child2
+def mutate(individual):
+    for i in range(len(individual)):
+        if random.random() < mutation_rate:
+            individual[i] = 1 - individual[i]
+    return individual
+population = generate_population(population_size)
+for gen in range(generations):
+    new_population = []
+    for _ in range(population_size // 2):
+        parent1 = selection(population)
+        parent2 = selection(population)
+        child1, child2 = crossover(parent1, parent2)
+        new_population.extend([mutate(child1), mutate(child2)])
+    population = new_population
+best_individual = max(population, key=fitness)
+print("Best solution:", best_individual)
+print("Best value:", fitness(best_individual))
 
-# Define fuzzy variables
-vehicle_density = ctrl.Antecedent(np.arange(0, 11, 1), 'vehicle_density')
-pedestrian_presence = ctrl.Antecedent(np.arange(0, 11, 1), 'pedestrian_presence')
-time_of_day = ctrl.Antecedent(np.arange(0, 25, 1), 'time_of_day')
-light_duration = ctrl.Consequent(np.arange(0, 61, 1), 'light_duration')
-
-# Define membership functions
-vehicle_density['low'] = fuzz.trimf(vehicle_density.universe, [0, 0, 5])
-vehicle_density['medium'] = fuzz.trimf(vehicle_density.universe, [0, 5, 10])
-vehicle_density['high'] = fuzz.trimf(vehicle_density.universe, [5, 10, 10])
-
-pedestrian_presence['none'] = fuzz.trimf(pedestrian_presence.universe, [0, 0, 5])
-pedestrian_presence['some'] = fuzz.trimf(pedestrian_presence.universe, [0, 5, 10])
-pedestrian_presence['high'] = fuzz.trimf(pedestrian_presence.universe, [5, 10, 10])
-
-time_of_day['morning'] = fuzz.trimf(time_of_day.universe, [0, 0, 12])
-time_of_day['afternoon'] = fuzz.trimf(time_of_day.universe, [0, 12, 24])
-time_of_day['night'] = fuzz.trimf(time_of_day.universe, [12, 24, 24])
-
-light_duration['short'] = fuzz.trimf(light_duration.universe, [0, 0, 30])
-light_duration['medium'] = fuzz.trimf(light_duration.universe, [0, 30, 60])
-light_duration['long'] = fuzz.trimf(light_duration.universe, [30, 60, 60])
-
-# Define fuzzy rules
-rule1 = ctrl.Rule(vehicle_density['low'] &pedestrian_presence['none'] &time_of_day['morning'], light_duration['long'])
-rule2 = ctrl.Rule(vehicle_density['medium'] &pedestrian_presence['none'] &time_of_day['morning'], light_duration['medium'])
-rule3 = ctrl.Rule(vehicle_density['high'] &pedestrian_presence['none'] &time_of_day['morning'], light_duration['short'])
-
-# Create control system
-traffic_ctrl = ctrl.ControlSystem([rule1, rule2, rule3])
-traffic_light = ctrl.ControlSystemSimulation(traffic_ctrl)
-
-# Input values
-traffic_light.input['vehicle_density'] = 3
-traffic_light.input['pedestrian_presence'] = 0
-traffic_light.input['time_of_day'] = 10
-
-# Compute output
-traffic_light.compute()
-
-# Output
-print("Recommended Traffic Light Duration:", traffic_light.output['light_duration'])
-
-# Visualization (Optional)
-vehicle_density.view()
-pedestrian_presence.view()
-time_of_day.view()
-light_duration.view()

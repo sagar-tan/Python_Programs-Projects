@@ -1,73 +1,29 @@
-#Use a genetic algorithm to find the maximum number of 1's in a binary string of fixed length (also known as the "One-Max Problem").
+#Implementation of Fuzzy Logic-Based Tip Recommendation System for Dining Experience. Use Fuzzy toolbox to model tip value that is given after a dinner which can be-not good,satisfying,good and delightful and service which is poor,average or good and the tip value will range from Rs. 10 to 100.
 
 import numpy as np
-
-# Parameters
-population_size = 10
-chromosome_length = 8
-generations = 50
-p_c = 0.7  # Crossover probability
-p_m = 0.01 # Mutation probability
-
-# Generate Initial Population
-def initialize_population(size, length):
-    return np.random.randint(2, size=(size, length))
-
-# Fitness Function
-def fitness(chromosome):
-    return np.sum(chromosome)  # Count of 1's
-
-# Selection using Roulette Wheel
-def roulette_wheel_selection(population, fitness_values):
-    total_fitness = np.sum(fitness_values)
-    selection_probs = fitness_values / total_fitness
-    selected_idx = np.random.choice(len(population), p=selection_probs)
-    return population[selected_idx]
-
-# Crossover
-def crossover(parent1, parent2, p_c):
-    if np.random.rand() < p_c:
-        point = np.random.randint(1, len(parent1) - 1)
-        child1 = np.concatenate((parent1[:point], parent2[point:]))
-        child2 = np.concatenate((parent2[:point], parent1[point:]))
-        return child1, child2
-    return parent1, parent2
-
-# Mutation
-def mutate(chromosome, p_m):
-    for i in range(len(chromosome)):
-        if np.random.rand() < p_m:
-            chromosome[i] = 1 - chromosome[i]  # Flip bit
-    return chromosome
-
-# Genetic Algorithm
-population = initialize_population(population_size, chromosome_length)
-
-for gen in range(generations):
-    fitness_values = np.array([fitness(chrom) for chrom in population])
-
-    # Display progress
-    print(f"Generation {gen + 1}: Max Fitness = {np.max(fitness_values)}")
-
-    new_population = []
-
-    # Create new population
-    for _ in range(population_size // 2):
-        parent1 = roulette_wheel_selection(population, fitness_values)
-        parent2 = roulette_wheel_selection(population, fitness_values)
-
-        # Crossover
-        child1, child2 = crossover(parent1, parent2, p_c)
-
-        # Mutation
-        child1 = mutate(child1, p_m)
-        child2 = mutate(child2, p_m)
-
-        new_population.extend([child1, child2])
-
-    population = np.array(new_population)
-
-# Final Results
-final_fitness = np.array([fitness(chrom) for chrom in population])
-print("Final population fitness:", final_fitness)
-print("Best solution:", population[np.argmax(final_fitness)])
+import skfuzzy as fuzz
+from skfuzzy import control as ctrl
+satisfaction = ctrl.Antecedent(np.arange(0, 11, 1), 'satisfaction')
+service = ctrl.Antecedent(np.arange(0, 11, 1), 'service')
+tip = ctrl.Consequent(np.arange(10, 101, 1), 'tip')
+satisfaction['not_good'] = fuzz.trimf(satisfaction.universe, [0, 0, 5])
+satisfaction['satisfying'] = fuzz.trimf(satisfaction.universe, [0, 5, 10])
+satisfaction['good'] = fuzz.trimf(satisfaction.universe, [5, 10, 10])
+satisfaction['delightful'] = fuzz.trimf(satisfaction.universe, [10, 10, 10])
+service['poor'] = fuzz.trimf(service.universe, [0, 0, 5])
+service['average'] = fuzz.trimf(service.universe, [0, 5, 10])
+service['good'] = fuzz.trimf(service.universe, [5, 10, 10])
+tip['low'] = fuzz.trimf(tip.universe, [10, 10, 55])
+tip['medium'] = fuzz.trimf(tip.universe, [10, 55, 100])
+tip['high'] = fuzz.trimf(tip.universe, [55, 100, 100])
+rule1 = ctrl.Rule(satisfaction['not_good'] | service['poor'], tip['low'])
+rule2 = ctrl.Rule(satisfaction['satisfying'] & service['average'], tip['medium'])
+rule3 = ctrl.Rule(satisfaction['good'] | service['good'], tip['high'])
+rule4 = ctrl.Rule(satisfaction['delightful'] & service['good'], tip['high'])
+tip_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4])
+tip_sim = ctrl.ControlSystemSimulation(tip_ctrl)
+tip_sim.input['satisfaction'] = 7
+tip_sim.input['service'] = 8
+tip_sim.compute()
+print("Recommended tip value:", tip_sim.output['tip'])
+tip.view(sim=tip_sim)   

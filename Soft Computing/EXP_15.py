@@ -1,47 +1,35 @@
-#Implementation of Fuzzy Logic-Based Tip Recommendation System for Dining Experience. Use Fuzzy toolbox to model tip value that is given after a dinner which can be-not good,satisfying,good and delightful and service which is poor,average or good and the tip value will range from Rs. 10 to 100.
+#Implementing Fuzzy Logic-Based Traffic Light Control System.
 
 import numpy as np
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
-
-# Define linguistic variables
-satisfaction = ctrl.Antecedent(np.arange(0, 11, 1), 'satisfaction')
-service = ctrl.Antecedent(np.arange(0, 11, 1), 'service')
-tip = ctrl.Consequent(np.arange(10, 101, 1), 'tip')
-
-# Define membership functions for satisfaction
-satisfaction['not_good'] = fuzz.trimf(satisfaction.universe, [0, 0, 5])
-satisfaction['satisfying'] = fuzz.trimf(satisfaction.universe, [0, 5, 10])
-satisfaction['good'] = fuzz.trimf(satisfaction.universe, [5, 10, 10])
-satisfaction['delightful'] = fuzz.trimf(satisfaction.universe, [10, 10, 10])
-
-# Define membership functions for service
-service['poor'] = fuzz.trimf(service.universe, [0, 0, 5])
-service['average'] = fuzz.trimf(service.universe, [0, 5, 10])
-service['good'] = fuzz.trimf(service.universe, [5, 10, 10])
-
-# Define membership functions for tip
-tip['low'] = fuzz.trimf(tip.universe, [10, 10, 55])
-tip['medium'] = fuzz.trimf(tip.universe, [10, 55, 100])
-tip['high'] = fuzz.trimf(tip.universe, [55, 100, 100])
-
-# Define fuzzy rules
-rule1 = ctrl.Rule(satisfaction['not_good'] | service['poor'], tip['low'])
-rule2 = ctrl.Rule(satisfaction['satisfying'] & service['average'], tip['medium'])
-rule3 = ctrl.Rule(satisfaction['good'] | service['good'], tip['high'])
-rule4 = ctrl.Rule(satisfaction['delightful'] & service['good'], tip['high'])
-
-# Create fuzzy inference system
-tip_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4])
-tip_sim = ctrl.ControlSystemSimulation(tip_ctrl)
-
-# Input values (example: satisfaction=7, service=8)
-tip_sim.input['satisfaction'] = 7
-tip_sim.input['service'] = 8
-
-# Compute output
-tip_sim.compute()
-
-# Output
-print("Recommended tip value:", tip_sim.output['tip'])
-tip.view(sim=tip_sim)
+vehicle_density = ctrl.Antecedent(np.arange(0, 11, 1), 'vehicle_density')
+pedestrian_presence = ctrl.Antecedent(np.arange(0, 11, 1), 'pedestrian_presence')
+time_of_day = ctrl.Antecedent(np.arange(0, 25, 1), 'time_of_day')
+light_duration = ctrl.Consequent(np.arange(0, 61, 1), 'light_duration')
+vehicle_density['low'] = fuzz.trimf(vehicle_density.universe, [0, 0, 5])
+vehicle_density['medium'] = fuzz.trimf(vehicle_density.universe, [0, 5, 10])
+vehicle_density['high'] = fuzz.trimf(vehicle_density.universe, [5, 10, 10])
+pedestrian_presence['none'] = fuzz.trimf(pedestrian_presence.universe, [0, 0, 5])
+pedestrian_presence['some'] = fuzz.trimf(pedestrian_presence.universe, [0, 5, 10])
+pedestrian_presence['high'] = fuzz.trimf(pedestrian_presence.universe, [5, 10, 10])
+time_of_day['morning'] = fuzz.trimf(time_of_day.universe, [0, 0, 12])
+time_of_day['afternoon'] = fuzz.trimf(time_of_day.universe, [0, 12, 24])
+time_of_day['night'] = fuzz.trimf(time_of_day.universe, [12, 24, 24])
+light_duration['short'] = fuzz.trimf(light_duration.universe, [0, 0, 30])
+light_duration['medium'] = fuzz.trimf(light_duration.universe, [0, 30, 60])
+light_duration['long'] = fuzz.trimf(light_duration.universe, [30, 60, 60])
+rule1 = ctrl.Rule(vehicle_density['low'] &pedestrian_presence['none'] &time_of_day['morning'], light_duration['long'])
+rule2 = ctrl.Rule(vehicle_density['medium'] &pedestrian_presence['none'] &time_of_day['morning'], light_duration['medium'])
+rule3 = ctrl.Rule(vehicle_density['high'] &pedestrian_presence['none'] &time_of_day['morning'], light_duration['short'])
+traffic_ctrl = ctrl.ControlSystem([rule1, rule2, rule3])
+traffic_light = ctrl.ControlSystemSimulation(traffic_ctrl)
+traffic_light.input['vehicle_density'] = 3
+traffic_light.input['pedestrian_presence'] = 0
+traffic_light.input['time_of_day'] = 10
+traffic_light.compute()
+print("Recommended Traffic Light Duration:", traffic_light.output['light_duration'])
+vehicle_density.view()
+pedestrian_presence.view()
+time_of_day.view()
+light_duration.view()
