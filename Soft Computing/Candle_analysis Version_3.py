@@ -1,142 +1,116 @@
-import pandas as pd
 import numpy as np
-import os
-import matplotlib.pyplot as plt
+import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential  # type: ignore
-from tensorflow.keras.layers import Dense, LSTM  # type: ignore
+from keras.models import Sequential
+from keras.layers import Dense, LSTM
+import plotly.graph_objects as go
+import os
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, precision_score, recall_score, f1_score
+
+
+# Disable oneDNN optimizations for TensorFlow (optional for compatibility)
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-file_path = 'C:/Users/tanwa/Python/EURUSD_Candlestick_5_M_BID_14.10.2024-19.10.2024 (1).csv'
-df = pd.read_csv(file_path)
-df['Datetime'] = pd.to_datetime(df['Local time'], format='%d.%m.%Y %H:%M:%S.%f GMT%z')
-df = df[['Datetime', 'Close']]
-df.set_index('Datetime', inplace=True)
+# Step 1: Load and preprocess the data
+file_path = r'C:\Users\tanwa\Python\EURUSD_Candlestick_5_M_BID_14.10.2024-19.10.2024 (1).csv'
 
-# Detect support and resistance levels using local minima and maxima
-n = 5  # Number of points to consider for local minima/maxima
-df['min'] = df['Close'][(df['Close'].shift(n) > df['Close']) & (df['Close'].shift(-n) > df['Close'])]
-df['max'] = df['Close'][(df['Close'].shift(n) < df['Close']) & (df['Close'].shift(-n) < df['Close'])]
+# Load data
+data = pd.read_csv(file_path)
+data['Local time'] = pd.to_datetime(data['Local time'], format='%d.%m.%Y %H:%M:%S.%f GMT%z', errors='coerce')
+data.dropna(inplace=True)
 
-# Extract support and resistance levels
-support_levels = df[df['min'].notnull()]['Close'].values
-resistance_levels = df[df['max'].notnull()]['Close'].values
+# Focus on relevant columns
+ohlc_data = data[['Open', 'High', 'Low', 'Close']]
 
-# Fibonacci levels calculation
-high = df['Close'].max()
-low = df['Close'].min()
-fibonacci_levels = [0.236, 0.382, 0.5, 0.618, 0.786]
-fib_levels = [high - (high - low) * level for level in fibonacci_levels]
-
-# Scale data for LSTM model
+# Scale data for RNN
 scaler = MinMaxScaler(feature_range=(0, 1))
-scaled_data = scaler.fit_transform(df['Close'].values.reshape(-1, 1))
+scaled_data = scaler.fit_transform(ohlc_data)
 
-# Prepare training data (using the past 60 time steps to predict the next one)
-prediction_days = 60
-X_train, y_train = [], []
+# Prepare sequences for training
+sequence_length = 60
+X, y = [], []
+for i in range(sequence_length, len(scaled_data)):
+    X.append(scaled_data[i-sequence_length:i])
+    y.append(scaled_data[i, 3])  # Predict 'Close'
 
-for x in range(prediction_days, len(scaled_data)):
-    X_train.append(scaled_data[x-prediction_days:x, 0])
-    y_train.append(scaled_data[x, 0])
+X, y = np.array(X), np.array(y)
 
-X_train, y_train = np.array(X_train), np.array(y_train)
-X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+# Step 2: Split Data into Training and Testing Sets
+split_index = int(len(X) * 0.8)
+X_train, X_test = X[:split_index], X[split_index:]
+y_train, y_test = y[:split_index], y[split_index:]
 
-# Build LSTM model
-model = Sequential()
-model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
-model.add(LSTM(units=50, return_sequences=False))
-model.add(Dense(units=25))
-model.add(Dense(units=1))
+# Step 3: Build and Train the RNN Model
+model = Sequential([
+    LSTM(100, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])),  # Increase LSTM units
+    LSTM(100, return_sequences=False),
+    Dense(50),  # Increase Dense units to capture more complexity
+    Dense(1)
+])
 
-# Compile and train the model
 model.compile(optimizer='adam', loss='mean_squared_error')
-model.fit(X_train, y_train, batch_size=32, epochs=10)
+model.fit(X_train, y_train, epochs=50, batch_size=32, verbose=1)  # Increase epochs
 
-# Predict next values based on the last 60 data points
-X_test = scaled_data[-prediction_days:]  # Get the last 60 scaled values
-X_test = np.array([X_test])  # Reshape for prediction
-X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+# Step 4: Predict the Trend for the Next Few Days
+# Use the last 60 data points from the dataset to predict the next 15 days for a stronger trend
+last_sequence = scaled_data[-sequence_length:]
+input_sequence = last_sequence.reshape(1, sequence_length, -1)
 
-# Generate predictions for 288 steps (one day)
 future_predictions = []
-for _ in range(288):  # 1 day of 5-minute candles
-    pred = model.predict(X_test)
-    future_predictions.append(pred[0])  # Append the first dimension of the prediction
-    
-    # Reshape 'pred' to have the shape (batch_size, 1, features)
-    pred = np.reshape(pred, (1, 1, 1))
-    
-    # Now append 'pred' to 'X_test[:, 1:, :]'
-    X_test = np.append(X_test[:, 1:, :], pred, axis=1)
+for _ in range(15):  # Predict for 15 days for a stronger trend
+    predicted_scaled = model.predict(input_sequence)
+    future_predictions.append(predicted_scaled[0, 0])
+    # Update the input sequence with the new prediction
+    next_input = np.concatenate((input_sequence[0][1:], [[predicted_scaled[0, 0]] * 4]), axis=0)
+    input_sequence = next_input.reshape(1, sequence_length, -1)
 
-# Inverse transform to get actual price predictions
-future_predictions = scaler.inverse_transform(np.array(future_predictions).reshape(-1, 1))
+# Rescale predictions to original values
+future_predictions = scaler.inverse_transform(
+    np.concatenate((np.zeros((15, 3)), np.array(future_predictions).reshape(-1, 1)), axis=1)
+)[:, 3]
 
-# Simulate price action with more significant adjustments
-def simulate_price_action(future_predictions, fib_levels, support_levels, resistance_levels, scenario):
-    """
-    Simulates price action based on given scenario and the influence of levels.
-    """
-    adjusted_predictions = []
-    for pred in future_predictions:
-        price = pred  # Directly use pred as it is already the price
-        
-        # Apply scenario biases:
-        if scenario == "bullish":
-            price *= 1.02  # Slight upward adjustment
-        elif scenario == "bearish":
-            price *= 0.98  # Slight downward adjustment
+# Step 5: Plot Candle Chart and Prediction
+fig = go.Figure()
 
-        # Stronger adjustments for Fibonacci levels
-        for fib_level in fib_levels:
-            if abs(price - fib_level) < 0.01 * price:  # Near Fibonacci level
-                if scenario == "bullish":
-                    price += (price * 0.02)  # Stronger upward breakout
-                elif scenario == "bearish":
-                    price -= (price * 0.02)  # Stronger downward rejection
+# Add candlestick chart for the last week
+week_data = data[data['Local time'] >= '2024-10-14']
+fig.add_trace(go.Candlestick(
+    x=week_data['Local time'],
+    open=week_data['Open'],
+    high=week_data['High'],
+    low=week_data['Low'],
+    close=week_data['Close'],
+    name='Actual Data'
+))
 
-        # Support/Resistance Bounce with stronger influence
-        if scenario == "bullish":
-            for resistance in resistance_levels:
-                if abs(price - resistance) < 0.01 * price:  # Close to resistance
-                    price -= price * 0.03  # Stronger rejection at resistance
-                    break  # Exit loop after first hit
+# Add prediction line chart
+future_dates = pd.date_range(start=data['Local time'].iloc[-1], periods=16, freq='D')[1:]
+fig.add_trace(go.Scatter(
+    x=future_dates,
+    y=future_predictions,
+    mode='lines+markers',
+    name='Predicted Trend',
+    line=dict(color='blue', width=2)
+))
 
-            for support in support_levels:
-                if abs(price - support) < 0.01 * price:  # Close to support
-                    price += price * 0.03  # Stronger bounce at support
-                    break  # Exit loop after first hit
+# Add Moving Average (20-day moving average for stronger trend)
+moving_average = data['Close'].rolling(window=20).mean().iloc[-len(week_data):]
+fig.add_trace(go.Scatter(
+    x=week_data['Local time'],
+    y=moving_average,
+    mode='lines',
+    name='20-Day Moving Average',
+    line=dict(color='orange', width=2, dash='dot')
+))
 
-        adjusted_predictions.append(price)
-    
-    return adjusted_predictions
+# Update layout
+fig.update_layout(
+    title="EUR/USD Weekly Candlestick Chart with Stronger Predictions",
+    xaxis_title="Date",
+    yaxis_title="Price",
+    template="plotly_dark",
+    xaxis_rangeslider_visible=False
+)
 
-# Generate predictions for different scenarios
-bullish_predictions = simulate_price_action(future_predictions, fib_levels, support_levels, resistance_levels, "bullish")
-bearish_predictions = simulate_price_action(future_predictions, fib_levels, support_levels, resistance_levels, "bearish")
-consolidation_predictions = simulate_price_action(future_predictions, fib_levels, support_levels, resistance_levels, "consolidation")
+fig.show()
 
-# Create a datetime range for future predictions
-future_dates = pd.date_range(df.index[-1], periods=len(bullish_predictions), freq='5T')
-
-# Plot the results
-plt.figure(figsize=(14, 8))
-plt.plot(df['Close'], label='Existing Data', color='blue')
-
-# Plot the final adjusted predictions based on the bullish scenario
-plt.plot(future_dates, bullish_predictions, color='green', label='Adjusted Bullish Prediction')
-
-# Plot Fibonacci and support/resistance levels
-for fib in fib_levels:
-    plt.axhline(fib, color='purple', linestyle='--', label=f'Fib level: {fib:.4f}')
-plt.scatter(df.index, df['min'], color='red', label='Support Levels')
-plt.scatter(df.index, df['max'], color='green', label='Resistance Levels')
-
-plt.title('Price Prediction with Enhanced Influence of Levels')
-plt.xlabel('Date')
-plt.ylabel('Close Price')
-plt.legend()
-plt.show() 
-plt.show()
